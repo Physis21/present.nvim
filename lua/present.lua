@@ -25,7 +25,6 @@ end
 ---@class present.Slide
 ---@field title string: the title of the slide.
 ---@field body string[]: the lines in the buffer.
----@field footer string: the footer of the slide.
 
 --- Takes some lines and parses them
 ---@param lines string[]: The lines in the buffer
@@ -219,10 +218,6 @@ M.start_presentation = function(opts)
   set_slide_content(1)
 end
 
--- M.start_presentation({
---   bufnr = 3,
--- })
-
-vim.api.nvim_create_user_command("PresentMd", M.start_presentation, { desc = "Present a Markdown file as slides" })
+M._parse_slides = parse_slides
 
 return M
