@@ -3,7 +3,23 @@
 This is a plugin for presenting markdown files, created by following the
 [advent of neovim youtube series](https://www.youtube.com/watch?v=VGid4aN25iI&list=PLep05UYkc6wTyBe7kPjQFWVXTlhKeQejM&index=18)
 
+## Features
+
+Can execute code in lua blocks, when you have them in a slide
+
+```lua
+print("hello world", 37)
+```
+
 ## Usage
+
+Either use the user command
+
+```vim
+:PresentStart
+```
+
+or the lua script
 
 ```lua
 require("present").start_presentation = {}

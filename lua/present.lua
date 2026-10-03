@@ -25,6 +25,11 @@ end
 ---@class present.Slide
 ---@field title string: the title of the slide.
 ---@field body string[]: the lines in the buffer.
+---@field blocks present.Block[]: A codeblock inside of a slide
+
+---@class present.Block
+---@field language string: The language of the codeblock
+---@field body string: The body of the codeblock
 
 --- Takes some lines and parses them
 ---@param lines string[]: The lines in the buffer
@@ -41,6 +46,7 @@ local parse_slides = function(lines)
       current_slide = {
         title = line,
         body = {},
+        blocks = {},
       }
     elseif current_slide then
       table.insert(current_slide.body, line)
@@ -49,6 +55,34 @@ local parse_slides = function(lines)
   if current_slide then
     table.insert(slides.slides, current_slide)
   end
+
+  for _, slide in ipairs(slides.slides) do
+    ---@type present.Block
+    local block = {
+      language = "",
+      body = "",
+    }
+    local inside_block = false
+    for _, line in ipairs(slide.body) do
+      if vim.startswith(line, "```") then
+        if not inside_block then
+          inside_block = true
+          block.language = string.sub(line, 4)
+        else
+          inside_block = false
+          block.body = vim.trim(block.body) -- delete whitespace we don't want to manage
+          table.insert(slide.blocks, block)
+        end
+      else
+        -- OK we are inside of a current markdown block
+        -- but it is not one of the guard, so insert this text
+        if inside_block then
+          block.body = block.body .. line .. "\n"
+        end
+      end
+    end
+  end
+
   return slides
 end
 
@@ -102,10 +136,15 @@ local create_window_configurations = function()
   }
 end
 
+---@class State
+---@field parsed present.Slides
+---@field current_slide integer
+---@field floats present.Float[]
+
+---@type State
 local state = {
   parsed = {},
   current_slide = 1,
-  ---@type present.Float[]
   floats = {},
 }
 
@@ -119,7 +158,7 @@ end
 ---@param mode string
 ---@param key string
 ---@param callback function
----@param desc string
+---@param desc? string
 local present_keymap = function(mode, key, callback, desc)
   desc = desc or ""
   vim.keymap.set(mode, key, callback, {
@@ -163,16 +202,6 @@ M.start_presentation = function(opts)
     vim.api.nvim_buf_set_lines(state.floats.footer.buf, 0, -1, false, { footer })
   end
 
-  present_keymap("n", "n", function()
-    state.current_slide = math.min(state.current_slide + 1, #state.parsed.slides)
-    set_slide_content(state.current_slide)
-  end, "go to next slide")
-
-  present_keymap("n", "p", function()
-    state.current_slide = math.max(state.current_slide - 1, 1)
-    set_slide_content(state.current_slide)
-  end, "go to previous slide")
-
   local augroup = vim.api.nvim_create_augroup("present-resized", { clear = true })
 
   local restore = {
@@ -193,8 +222,6 @@ M.start_presentation = function(opts)
     pcall(vim.api.nvim_del_augroup_by_id, augroup)
   end
 
-  present_keymap("n", "q", cleanup, "quit slide presentation")
-
   vim.api.nvim_create_autocmd("BufLeave", {
     buffer = state.floats.body.buf,
     callback = cleanup,
@@ -213,6 +240,43 @@ M.start_presentation = function(opts)
       set_slide_content(state.current_slide)
     end,
   })
+
+  --#region Keymaps
+
+  present_keymap("n", "n", function()
+    state.current_slide = math.min(state.current_slide + 1, #state.parsed.slides)
+    set_slide_content(state.current_slide)
+  end, "go to next slide")
+
+  present_keymap("n", "p", function()
+    state.current_slide = math.max(state.current_slide - 1, 1)
+    set_slide_content(state.current_slide)
+  end, "go to previous slide")
+
+  present_keymap("n", "q", cleanup, "quit slide presentation")
+
+  -- The advent of neovim version actually popups a new window to display the output and code.
+  -- I believe this is overkill, so I don't implement it.
+  present_keymap("n", "X", function()
+    local slide = state.parsed.slides[state.current_slide]
+    -- TODO: Make a way for people to execute this for other languages
+    local block = slide.blocks[1]
+    if block.language ~= "lua" then
+      print("only supports lua atm")
+      return
+    end
+    if not block then
+      print("No blocks on this page")
+      return
+    end
+
+    local chunk = loadstring(block.body)
+    if chunk ~= nil then
+      chunk()
+    end
+  end)
+
+  --#endregion Keymaps
 
   vim.o.cmdheight = 0
   set_slide_content(1)
